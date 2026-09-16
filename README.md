@@ -39,6 +39,9 @@ uvx py-exec-mcp          # no install
 pip install py-exec-mcp  # or the usual way
 ```
 
+Works on **both MCP SDK majors** — 2.x renamed `FastMCP` to `MCPServer`, and the server binds
+whichever one your environment has, so you are not forced to pin the SDK to match it.
+
 ## Configure
 
 <details open>
@@ -144,7 +147,8 @@ ruff check . && ruff format --check .
 Tests assert on **what a caller reads** — the returned string — never on "it did not crash". A test
 that asserts exit 0 has tested the process surviving, not the answer being right. CI runs the suite
 on Linux, macOS and Windows across Python 3.10–3.13, because cross-platform interpreter resolution
-is the part most likely to break.
+is the part most likely to break, plus one job pinned to `mcp<2` — the matrix always resolves the
+newest SDK, so without that job the 1.x import path would never be exercised.
 
 ## Prior art
 

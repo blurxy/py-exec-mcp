@@ -6,6 +6,7 @@ answer being right. Every assertion here is against the returned string a client
 
 from __future__ import annotations
 
+import importlib.metadata
 import os
 import subprocess
 import sys
@@ -129,6 +130,20 @@ def test_code_runs_in_the_workdir_and_can_import_from_it(run, tmp_path):
     (tmp_path / "local_module.py").write_text("VALUE = 'imported-from-workdir'\n")
     out = run("import local_module; print(local_module.VALUE)")
     assert "imported-from-workdir" in out
+
+
+# ── SDK compatibility ─────────────────────────────────────────────────────────
+
+
+def test_binds_the_server_class_the_installed_sdk_provides():
+    """mcp 2.x renamed FastMCP to MCPServer; pinning either name breaks half the users.
+
+    The expectation is read from the installed distribution, NOT from server.py's
+    import — so re-hardcoding one major goes red on a box running the other.
+    """
+    major = int(importlib.metadata.version("mcp").split(".")[0])
+    expected = "MCPServer" if major >= 2 else "FastMCP"
+    assert type(server.build()).__name__ == expected
 
 
 # ── the packaged entry point ──────────────────────────────────────────────────

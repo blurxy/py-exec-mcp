@@ -7,7 +7,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-from mcp.server.fastmcp import FastMCP
+try:  # mcp 2.x renamed FastMCP to MCPServer. Nothing else this server touches moved.
+    from mcp.server.mcpserver import MCPServer as _Server
+except ModuleNotFoundError:  # mcp 1.x
+    from mcp.server.fastmcp import FastMCP as _Server
 
 __all__ = ["build", "resolve_interpreter", "resolve_workdir"]
 
@@ -61,8 +64,8 @@ def _render(stdout: str, stderr: str, exit_line: str) -> str:
     return "\n".join(parts)
 
 
-def build() -> FastMCP:
-    mcp = FastMCP("py-exec")
+def build() -> _Server:
+    mcp = _Server("py-exec")
 
     @mcp.tool()
     def run_python(code: str, timeout_s: float = DEFAULT_TIMEOUT) -> str:

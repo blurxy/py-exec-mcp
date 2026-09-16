@@ -23,7 +23,9 @@ classifiers = [
     "Topic :: Software Development :: Testing",
     "Typing :: Typed",
 ]
-dependencies = ["mcp>=1.2.0"]
+# Both SDK majors work (2.x renamed FastMCP to MCPServer; server.py binds either).
+# Capped at <3 because a third major has not been tested against.
+dependencies = ["mcp>=1.2.0,<3"]
 
 [project.urls]
 Homepage = "https://github.com/blurxy/py-exec-mcp"
@@ -32,7 +34,9 @@ Issues = "https://github.com/blurxy/py-exec-mcp/issues"
 [project.scripts]
 py-exec-mcp = "py_exec_mcp.__main__:main"
 
-[dependency-groups]
+# An extra, not a PEP 735 group: `pip install -e ".[dev]"` is what the README tells
+# contributors to run, and a group needs `--group dev` on pip >= 25.1 to resolve at all.
+[project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.6"]
 
 [tool.hatch.build.targets.wheel]
