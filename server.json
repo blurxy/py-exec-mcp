@@ -1,0 +1,44 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.blurxy/py-exec-mcp",
+  "description": "Run Python from an MCP client without a shell mangling your code: code goes to the interpreter over stdin.",
+  "version": "0.2.0",
+  "repository": {
+    "url": "https://github.com/blurxy/py-exec-mcp",
+    "source": "github"
+  },
+  "websiteUrl": "https://github.com/blurxy/py-exec-mcp",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "registryBaseUrl": "https://pypi.org",
+      "identifier": "py-exec-mcp",
+      "version": "0.2.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "PY_EXEC_CWD",
+          "description": "Directory code runs in, also prepended to PYTHONPATH. Defaults to the server's cwd.",
+          "isRequired": false
+        },
+        {
+          "name": "PY_EXEC_PYTHON",
+          "description": "Interpreter to run code with. Defaults to the project's .venv, else the server's interpreter.",
+          "isRequired": false
+        },
+        {
+          "name": "PY_EXEC_MAX_TIMEOUT",
+          "description": "Upper clamp on timeout_s in seconds. Default 600.",
+          "isRequired": false
+        },
+        {
+          "name": "PY_EXEC_MAX_OUTPUT",
+          "description": "Per-stream character cap before the middle of the output is cut. Default 30000.",
+          "isRequired": false
+        }
+      ]
+    }
+  ]
+}

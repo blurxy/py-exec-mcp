@@ -1,7 +1,7 @@
-"""Behaviour tests. Each asserts on what a CALLER reads, never on "it did not crash".
+"""What an MCP client reads from the server, over a real session.
 
-A test named "handles X" that asserts exit 0 has tested the process surviving, not the
-answer being right. Every assertion here is against the returned string a client acts on.
+Each test asserts on the CallToolResult or tool listing a client acts on, never on
+"it did not crash". The execution core itself is covered in test_runner.py.
 """
 
 from __future__ import annotations
@@ -10,23 +10,22 @@ import importlib.metadata
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
+import anyio
 import pytest
 
 from py_exec_mcp import server
 
-
-@pytest.fixture
-def run(monkeypatch, tmp_path):
-    """Call the tool function directly, with the workdir pinned to a temp dir."""
-    monkeypatch.setenv("PY_EXEC_CWD", str(tmp_path))
-    monkeypatch.setenv("PY_EXEC_PYTHON", sys.executable)
-    tool = server.build()._tool_manager.get_tool("run_python")
-    return lambda code, **kw: tool.fn(code, **kw)
+pytestmark = pytest.mark.anyio
 
 
-# ── the reason this server exists ─────────────────────────────────────────────
+def text_of(result) -> str:
+    return "".join(block.text for block in result.content if block.type == "text")
+
+
+# ── the reason this server exists, end to end ─────────────────────────────────
 
 NASTY = "\n".join(
     [
@@ -38,98 +37,62 @@ NASTY = "\n".join(
 )
 
 
-def test_nested_quotes_and_fstrings_survive_verbatim(run):
-    """THE POINT OF THE PROJECT. Through a shell this mangles; over stdin it must not."""
-    out = run(NASTY)
+async def test_nested_quotes_and_fstrings_survive_verbatim(session):
+    """THE POINT OF THE PROJECT. Through a shell this mangles; over JSON and stdin it must not."""
+    out = text_of(await session.call_tool("run_python", {"code": NASTY}))
     assert 'he said "hello world" and it held' in out
     assert r"C:\demo\x\n is not a newline" in out
     assert "nested quotes and triples" in out
 
 
-def test_exit_code_reaches_the_caller(run):
-    assert "--- exit 3 ---" in run("import sys; sys.exit(3)")
-    assert "--- exit 0 ---" in run("print('ok')")
+# ── the contract a caller gets ────────────────────────────────────────────────
 
 
-def test_stderr_is_captured_and_labelled(run):
-    out = run("import sys; print('to-out'); print('to-err', file=sys.stderr)")
-    assert "to-out" in out
-    assert "--- stderr ---" in out
-    assert "to-err" in out
+async def test_result_carries_structured_content_alongside_the_text(session):
+    """Programs want fields; models want text. Both come back from one call."""
+    result = await session.call_tool("run_python", {"code": "import sys; print('v'); sys.exit(3)"})
+    assert "--- exit 3 ---" in text_of(result)
+    # 1.x and 2.x spell the attribute differently; the wire name is the same.
+    fields = result.model_dump(by_alias=True)["structuredContent"]
+    assert fields["exit_code"] == 3
+    assert fields["stdout"].strip() == "v"
+    assert fields["timed_out"] is False
+    assert fields["interpreter"] == sys.executable
 
 
-def test_a_traceback_comes_back_rather_than_vanishing(run):
-    out = run("raise ValueError('boom')")
-    assert "ValueError: boom" in out
-    assert "--- exit 1 ---" in out
+async def test_annotations_say_it_is_destructive_and_open_world(session):
+    """Clients that gate on hints must not be told this tool is read-only."""
+    tools = (await session.list_tools()).tools
+    hints = next(t for t in tools if t.name == "run_python").annotations
+    assert hints is not None
+    hints = hints.model_dump(by_alias=True)
+    assert hints["destructiveHint"] is True
+    assert hints["openWorldHint"] is True
+    assert hints["readOnlyHint"] is False
 
 
-# ── the fixes, each named for the failure it prevents ─────────────────────────
+async def test_description_tells_the_caller_what_bites(session):
+    """The description is the only manual an LLM reads."""
+    tools = (await session.list_tools()).tools
+    desc = next(t for t in tools if t.name == "run_python").description.lower()
+    assert "does not persist" in desc
+    assert "print(" in desc
+    assert "stdin" in desc
 
 
-def test_truncation_is_announced_not_silent(run, monkeypatch):
-    """A silently clipped result is indistinguishable from a short one."""
-    monkeypatch.setattr(server, "MAX_OUTPUT", 200)
-    out = run("print('x' * 5000)")
-    assert "truncated" in out
-    assert "more chars" in out, "the caller must be able to tell output was dropped"
+async def test_a_running_script_does_not_block_the_server(session):
+    """While one call sleeps, the server must still answer. mcp 1.x runs sync tools inline.
 
-
-def test_timeout_returns_what_was_produced(run):
-    """The runs that time out are the ones whose partial output matters most."""
-    code = "import time\nprint('before the hang', flush=True)\ntime.sleep(30)"
-    out = run(code, timeout_s=2)
-    assert "--- TIMEOUT after 2s ---" in out
-    assert "before the hang" in out, "partial output was discarded on timeout"
-
-
-def test_timeout_is_clamped_at_both_ends(run):
-    assert "--- exit 0 ---" in run("print('fast')", timeout_s=0.001)
-    assert "--- exit 0 ---" in run("print('fast')", timeout_s=10**9)
-
-
-def test_a_missing_interpreter_reports_itself(monkeypatch, tmp_path):
-    monkeypatch.setenv("PY_EXEC_CWD", str(tmp_path))
-    monkeypatch.setenv("PY_EXEC_PYTHON", str(tmp_path / "definitely-not-here"))
-    tool = server.build()._tool_manager.get_tool("run_python")
-    assert "could not start interpreter" in tool.fn("print(1)")
-
-
-# ── resolution: the portability half ──────────────────────────────────────────
-
-
-def test_explicit_interpreter_wins(monkeypatch, tmp_path):
-    monkeypatch.setenv("PY_EXEC_PYTHON", "/custom/python")
-    assert server.resolve_interpreter(tmp_path) == Path("/custom/python")
-
-
-@pytest.mark.parametrize("layout", ["Scripts/python.exe", "bin/python", "bin/python3"])
-def test_both_venv_layouts_are_found(monkeypatch, tmp_path, layout):
-    """Windows puts it in Scripts/, everyone else in bin/. Hardcoding one is the bug."""
-    monkeypatch.delenv("PY_EXEC_PYTHON", raising=False)
-    target = tmp_path / ".venv" / layout
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text("")
-    assert server.resolve_interpreter(tmp_path) == target
-
-
-def test_falls_back_to_the_running_interpreter(monkeypatch, tmp_path):
-    monkeypatch.delenv("PY_EXEC_PYTHON", raising=False)
-    assert server.resolve_interpreter(tmp_path) == Path(sys.executable)
-
-
-def test_workdir_is_never_derived_from_the_package_location(monkeypatch, tmp_path):
-    """Once pip-installed, a path relative to __file__ points into site-packages."""
-    monkeypatch.setenv("PY_EXEC_CWD", str(tmp_path))
-    resolved = server.resolve_workdir()
-    assert resolved == tmp_path.resolve()
-    assert Path(server.__file__).parent not in resolved.parents
-
-
-def test_code_runs_in_the_workdir_and_can_import_from_it(run, tmp_path):
-    (tmp_path / "local_module.py").write_text("VALUE = 'imported-from-workdir'\n")
-    out = run("import local_module; print(local_module.VALUE)")
-    assert "imported-from-workdir" in out
+    The clock starts before the call: in a single-threaded harness a blocked loop also
+    delays this test's own sleep, so the whole span is what measures responsiveness.
+    """
+    started = time.monotonic()
+    async with anyio.create_task_group() as tg:
+        tg.start_soon(session.call_tool, "run_python", {"code": "import time; time.sleep(3)"})
+        await anyio.sleep(0.2)  # let the request reach the server
+        await session.send_ping()
+        responsive_after = time.monotonic() - started
+    assert responsive_after < 1.5, f"ping answered only after {responsive_after:.1f}s"
 
 
 # ── SDK compatibility ─────────────────────────────────────────────────────────
@@ -163,4 +126,4 @@ def test_module_entry_point_imports_without_starting_a_server():
         timeout=60,
     )
     assert r.returncode == 0, r.stderr
-    assert r.stdout.strip() == "0.1.0"
+    assert r.stdout.strip() == importlib.metadata.version("py-exec-mcp")
