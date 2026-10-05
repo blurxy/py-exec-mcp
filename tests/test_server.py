@@ -126,4 +126,4 @@ def test_module_entry_point_imports_without_starting_a_server():
         timeout=60,
     )
     assert r.returncode == 0, r.stderr
-    assert r.stdout.strip() == "0.1.0"
+    assert r.stdout.strip() == importlib.metadata.version("py-exec-mcp")

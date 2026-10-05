@@ -171,3 +171,35 @@ def test_code_runs_in_the_workdir_and_can_import_from_it(run, tmp_path):
     (tmp_path / "local_module.py").write_text("VALUE = 'imported-from-workdir'\n")
     out = run("import local_module; print(local_module.VALUE)")
     assert "imported-from-workdir" in out
+
+
+# ── the result explains the failures an agent hits most ───────────────────────
+
+
+def test_a_missing_module_names_the_interpreter_and_the_fix(run):
+    """ModuleNotFoundError almost always means "wrong interpreter", so say which one ran."""
+    out = run("import definitely_not_installed_pkg_xyz")
+    assert "ModuleNotFoundError" in out
+    assert sys.executable in out, "the interpreter that lacked the module is not named"
+    assert "PY_EXEC_PYTHON" in out, "the caller is not told how to point at another interpreter"
+
+
+def test_a_bad_config_value_names_the_variable_at_startup():
+    """`int('abc')` from inside a module import tells nobody which setting was wrong."""
+    r = subprocess.run(
+        [sys.executable, "-c", "import py_exec_mcp.runner"],
+        capture_output=True,
+        text=True,
+        env={**os.environ, "PY_EXEC_MAX_OUTPUT": "lots"},
+        timeout=60,
+    )
+    assert r.returncode != 0
+    assert "PY_EXEC_MAX_OUTPUT" in r.stderr
+    assert "lots" in r.stderr
+
+
+def test_line_endings_are_normalised_on_every_platform(run):
+    """Windows children write CRLF to pipes; the caller should never see a carriage return."""
+    out = run("print('a'); print('b')")
+    assert chr(13) not in out
+    assert "a" + chr(10) + "b" in out

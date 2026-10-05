@@ -9,5 +9,5 @@ so no shell or argv parsing ever touches it.
 
 from py_exec_mcp.server import build, resolve_interpreter, resolve_workdir
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __all__ = ["build", "resolve_interpreter", "resolve_workdir", "__version__"]

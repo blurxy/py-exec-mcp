@@ -6,21 +6,34 @@ the real result.
 
 from __future__ import annotations
 
-import codecs
+import io
 import os
 import signal
 import subprocess
 import sys
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import IO
+from typing import IO, TypeVar
+
+T = TypeVar("T", int, float)
+
+
+def _setting(name: str, default: str, parse: Callable[[str], T]) -> T:
+    """Read a numeric setting, and fail naming the variable rather than with int()'s message."""
+    raw = os.environ.get(name, default)
+    try:
+        return parse(raw)
+    except ValueError:
+        raise ValueError(f"{name}={raw!r} is not a number; unset it or give it one") from None
+
 
 DEFAULT_TIMEOUT = 120.0
 MIN_TIMEOUT = 1.0
-MAX_TIMEOUT = float(os.environ.get("PY_EXEC_MAX_TIMEOUT", "600"))
-MAX_OUTPUT = int(os.environ.get("PY_EXEC_MAX_OUTPUT", "30000"))
+MAX_TIMEOUT = _setting("PY_EXEC_MAX_TIMEOUT", "600", float)
+MAX_OUTPUT = _setting("PY_EXEC_MAX_OUTPUT", "30000", int)
 
 _CHUNK = 65536
 
@@ -109,6 +122,7 @@ class RunResult:
     stdout_dropped: int = 0
     stderr_dropped: int = 0
     error: str | None = None
+    hint: str | None = None
 
 
 def _isolation() -> dict[str, bool]:
@@ -135,13 +149,14 @@ def _kill_tree(proc: subprocess.Popen[bytes]) -> None:
 
 
 def _pump(stream: IO[bytes], buf: BoundedBuffer) -> None:
-    decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+    # Universal newlines, like the text mode this replaced: Windows children write CRLF.
+    # readline(limit) bounds each read, so one endless line cannot grow past a chunk.
+    text = io.TextIOWrapper(stream, encoding="utf-8", errors="replace", newline=None)
     while True:
-        data = os.read(stream.fileno(), _CHUNK)
-        if not data:
-            buf.write(decoder.decode(b"", final=True))
+        chunk = text.readline(_CHUNK)
+        if not chunk:
             return
-        buf.write(decoder.decode(data))
+        buf.write(chunk)
 
 
 def execute(code: str, timeout_s: float = DEFAULT_TIMEOUT) -> RunResult:
@@ -202,9 +217,19 @@ def execute(code: str, timeout_s: float = DEFAULT_TIMEOUT) -> RunResult:
     for reader in readers:
         reader.join(timeout=5)
 
+    stderr = err_buf.text("stderr")
+    hint = None
+    if "ModuleNotFoundError: No module named" in stderr:
+        # Almost always the wrong interpreter, and the caller cannot see which one ran.
+        hint = (
+            f"the interpreter was {python}; install the module there, "
+            "or set PY_EXEC_PYTHON to an interpreter that has it"
+        )
+
     return RunResult(
         stdout=out_buf.text("stdout"),
-        stderr=err_buf.text("stderr"),
+        stderr=stderr,
+        hint=hint,
         exit_code=None if timed_out else proc.returncode,
         timed_out=timed_out,
         timeout_s=timeout,
@@ -229,4 +254,6 @@ def render(result: RunResult) -> str:
         parts.append(f"--- TIMEOUT after {result.timeout_s:.0f}s ---")
     else:
         parts.append(f"--- exit {result.exit_code} ---")
+    if result.hint:
+        parts.append(f"--- hint: {result.hint} ---")
     return "\n".join(parts)

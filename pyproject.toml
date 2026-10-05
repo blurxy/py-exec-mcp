@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "py-exec-mcp"
-version = "0.1.0"
+dynamic = ["version"]  # single source: __version__ in src/py_exec_mcp/__init__.py
 description = "Run Python from an MCP client with no shell quoting in the way"
 readme = "README.md"
 license = "Apache-2.0"
@@ -40,6 +40,9 @@ py-exec-mcp = "py_exec_mcp.__main__:main"
 # contributors to run, and a group needs `--group dev` on pip >= 25.1 to resolve at all.
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.6"]
+
+[tool.hatch.version]
+path = "src/py_exec_mcp/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/py_exec_mcp"]
