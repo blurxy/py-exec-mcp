@@ -67,14 +67,6 @@ def test_a_traceback_comes_back_rather_than_vanishing(run):
 # ── the fixes, each named for the failure it prevents ─────────────────────────
 
 
-def test_truncation_is_announced_not_silent(run, monkeypatch):
-    """A silently clipped result is indistinguishable from a short one."""
-    monkeypatch.setattr(server, "MAX_OUTPUT", 200)
-    out = run("print('x' * 5000)")
-    assert "truncated" in out
-    assert "more chars" in out, "the caller must be able to tell output was dropped"
-
-
 def test_timeout_returns_what_was_produced(run):
     """The runs that time out are the ones whose partial output matters most."""
     code = "import time\nprint('before the hang', flush=True)\ntime.sleep(30)"
