@@ -6,7 +6,11 @@ interpreter and check the real rendered text, never a mock.
 
 from __future__ import annotations
 
+import os
+import subprocess
 import sys
+import time
+from pathlib import Path
 
 import pytest
 
@@ -18,6 +22,27 @@ def run(monkeypatch, tmp_path):
     monkeypatch.setenv("PY_EXEC_CWD", str(tmp_path))
     monkeypatch.setenv("PY_EXEC_PYTHON", sys.executable)
     return lambda code, **kw: runner.render(runner.execute(code, **kw))
+
+
+# ── what comes back ───────────────────────────────────────────────────────────
+
+
+def test_exit_code_reaches_the_caller(run):
+    assert "--- exit 3 ---" in run("import sys; sys.exit(3)")
+    assert "--- exit 0 ---" in run("print('ok')")
+
+
+def test_stderr_is_captured_and_labelled(run):
+    out = run("import sys; print('to-out'); print('to-err', file=sys.stderr)")
+    assert "to-out" in out
+    assert "--- stderr ---" in out
+    assert "to-err" in out
+
+
+def test_a_traceback_comes_back_rather_than_vanishing(run):
+    out = run("raise ValueError('boom')")
+    assert "ValueError: boom" in out
+    assert "--- exit 1 ---" in out
 
 
 # ── truncation keeps both ends and never holds more than the cap ──────────────
@@ -55,19 +80,28 @@ def test_truncated_output_keeps_the_tail_where_the_traceback_lives(run, monkeypa
     assert "--- exit 7 ---" in out
 
 
-# ── a timeout ends the whole process tree, not just the child ─────────────────
+# ── timeouts ──────────────────────────────────────────────────────────────────
+
+
+def test_timeout_returns_what_was_produced(run):
+    """The runs that time out are the ones whose partial output matters most."""
+    code = "import time\nprint('before the hang', flush=True)\ntime.sleep(30)"
+    out = run(code, timeout_s=2)
+    assert "--- TIMEOUT after 2s ---" in out
+    assert "before the hang" in out, "partial output was discarded on timeout"
+
+
+def test_timeout_is_clamped_at_both_ends(run):
+    assert "--- exit 0 ---" in run("print('fast')", timeout_s=0.001)
+    assert "--- exit 0 ---" in run("print('fast')", timeout_s=10**9)
 
 
 def _alive(pid: int) -> bool:
     if sys.platform == "win32":
-        import subprocess
-
         out = subprocess.run(
             ["tasklist", "/FI", f"PID eq {pid}", "/NH"], capture_output=True, text=True
         ).stdout
         return str(pid) in out
-    import os
-
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
@@ -77,8 +111,6 @@ def _alive(pid: int) -> bool:
 
 def test_timeout_kills_the_grandchildren_too(run, tmp_path):
     """Killing only the direct child leaves whatever it spawned running forever."""
-    import time
-
     pid_file = tmp_path / "grandchild.pid"
     code = "\n".join(
         [
@@ -96,3 +128,46 @@ def test_timeout_kills_the_grandchildren_too(run, tmp_path):
     while _alive(grandchild) and time.monotonic() < deadline:
         time.sleep(0.2)
     assert not _alive(grandchild), "grandchild survived the timeout"
+
+
+# ── resolution: the portability half ──────────────────────────────────────────
+
+
+def test_a_missing_interpreter_reports_itself(monkeypatch, tmp_path):
+    monkeypatch.setenv("PY_EXEC_CWD", str(tmp_path))
+    monkeypatch.setenv("PY_EXEC_PYTHON", str(tmp_path / "definitely-not-here"))
+    assert "could not start interpreter" in runner.render(runner.execute("print(1)"))
+
+
+def test_explicit_interpreter_wins(monkeypatch, tmp_path):
+    monkeypatch.setenv("PY_EXEC_PYTHON", "/custom/python")
+    assert runner.resolve_interpreter(tmp_path) == Path("/custom/python")
+
+
+@pytest.mark.parametrize("layout", ["Scripts/python.exe", "bin/python", "bin/python3"])
+def test_both_venv_layouts_are_found(monkeypatch, tmp_path, layout):
+    """Windows puts it in Scripts/, everyone else in bin/. Hardcoding one is the bug."""
+    monkeypatch.delenv("PY_EXEC_PYTHON", raising=False)
+    target = tmp_path / ".venv" / layout
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("")
+    assert runner.resolve_interpreter(tmp_path) == target
+
+
+def test_falls_back_to_the_running_interpreter(monkeypatch, tmp_path):
+    monkeypatch.delenv("PY_EXEC_PYTHON", raising=False)
+    assert runner.resolve_interpreter(tmp_path) == Path(sys.executable)
+
+
+def test_workdir_is_never_derived_from_the_package_location(monkeypatch, tmp_path):
+    """Once pip-installed, a path relative to __file__ points into site-packages."""
+    monkeypatch.setenv("PY_EXEC_CWD", str(tmp_path))
+    resolved = runner.resolve_workdir()
+    assert resolved == tmp_path.resolve()
+    assert Path(runner.__file__).parent not in resolved.parents
+
+
+def test_code_runs_in_the_workdir_and_can_import_from_it(run, tmp_path):
+    (tmp_path / "local_module.py").write_text("VALUE = 'imported-from-workdir'\n")
+    out = run("import local_module; print(local_module.VALUE)")
+    assert "imported-from-workdir" in out

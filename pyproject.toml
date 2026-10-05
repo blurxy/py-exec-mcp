@@ -24,8 +24,10 @@ classifiers = [
     "Typing :: Typed",
 ]
 # Both SDK majors work (2.x renamed FastMCP to MCPServer; server.py binds either).
-# Capped at <3 because a third major has not been tested against.
-dependencies = ["mcp>=1.2.0,<3"]
+# The floor is where a tool may return text and structured content together
+# (CallToolResult passthrough landed in 1.19). Capped at <3: untested against a third major.
+# anyio is what mcp itself runs on; declared because server.py imports it directly.
+dependencies = ["mcp>=1.19,<3", "anyio>=4"]
 
 [project.urls]
 Homepage = "https://github.com/blurxy/py-exec-mcp"
