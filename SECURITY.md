@@ -14,8 +14,6 @@ Anything that breaks a promise the README makes. For example:
 - code reaching the interpreter altered in any way (quoting, encoding, newline handling)
 - a timeout that does not end the whole process tree
 - output truncation that is silent, or a cap that can be exceeded in memory
-- the optional judge being bypassable in a way the README does not describe, or failing open
-  where it is documented to fail closed
 
 ## Reporting
 

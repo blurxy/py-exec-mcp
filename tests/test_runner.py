@@ -96,9 +96,9 @@ def test_timeout_is_clamped_at_both_ends(run):
     assert "--- exit 0 ---" in run("print('fast')", timeout_s=10**9)
 
 
-def _alive(pid: int) -> bool:
+def _alive(pid: int, run=subprocess.run) -> bool:
     if sys.platform == "win32":
-        out = subprocess.run(
+        out = run(
             ["tasklist", "/FI", f"PID eq {pid}", "/NH"], capture_output=True, text=True
         ).stdout
         return str(pid) in out
@@ -128,6 +128,34 @@ def test_timeout_kills_the_grandchildren_too(run, tmp_path):
     while _alive(grandchild) and time.monotonic() < deadline:
         time.sleep(0.2)
     assert not _alive(grandchild), "grandchild survived the timeout"
+
+
+def test_timeout_still_kills_the_child_when_the_tree_kill_tool_is_missing(
+    run, tmp_path, monkeypatch
+):
+    """A missing taskkill or a failing killpg must not turn a timeout into a leaked process."""
+    real_run = subprocess.run
+
+    def boom(*args, **kwargs):
+        raise FileNotFoundError("no such tool")
+
+    monkeypatch.setattr(subprocess, "run", boom)
+    monkeypatch.setattr(os, "killpg", boom, raising=False)
+    pid_file = tmp_path / "child.pid"
+    code = chr(10).join(
+        [
+            "import os, time",
+            f"open({str(pid_file)!r}, 'w').write(str(os.getpid()))",
+            "time.sleep(120)",
+        ]
+    )
+    out = run(code, timeout_s=2)
+    assert "--- TIMEOUT after 2s ---" in out
+    child = int(pid_file.read_text())
+    deadline = time.monotonic() + 5
+    while _alive(child, run=real_run) and time.monotonic() < deadline:
+        time.sleep(0.2)
+    assert not _alive(child, run=real_run), "child survived because the tree kill tool failed"
 
 
 # ── resolution: the portability half ──────────────────────────────────────────
@@ -184,18 +212,20 @@ def test_a_missing_module_names_the_interpreter_and_the_fix(run):
     assert "PY_EXEC_PYTHON" in out, "the caller is not told how to point at another interpreter"
 
 
-def test_a_bad_config_value_names_the_variable_at_startup():
-    """`int('abc')` from inside a module import tells nobody which setting was wrong."""
+@pytest.mark.parametrize("value", ["lots", "0", "-5", "nan", "inf"])
+def test_a_bad_config_value_names_the_variable_at_startup(value):
+    """`int('abc')` from inside a module import tells nobody which setting was wrong,
+    and a cap of 0 or -5 is a misconfiguration too, not a request for one character."""
     r = subprocess.run(
         [sys.executable, "-c", "import py_exec_mcp.runner"],
         capture_output=True,
         text=True,
-        env={**os.environ, "PY_EXEC_MAX_OUTPUT": "lots"},
+        env={**os.environ, "PY_EXEC_MAX_OUTPUT": value},
         timeout=60,
     )
     assert r.returncode != 0
     assert "PY_EXEC_MAX_OUTPUT" in r.stderr
-    assert "lots" in r.stderr
+    assert value in r.stderr
 
 
 def test_line_endings_are_normalised_on_every_platform(run):

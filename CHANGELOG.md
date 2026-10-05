@@ -39,7 +39,7 @@ All notable changes to this project are documented here. The format follows
   them running after the call returned, holding the pipes open.
 - Memory is bounded while a script runs: a runaway `print` loop used to be buffered in full
   until the timeout, then clipped.
-- `PY_EXEC_MAX_OUTPUT=lots` now fails at startup naming the variable instead of with
+- `PY_EXEC_MAX_OUTPUT=lots` (or `0`, or `-5`) now fails at startup naming the variable instead of with
   `int()`'s message.
 - The version lives in one place (`__version__`) and the package metadata is read from it.
 

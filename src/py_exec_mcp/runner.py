@@ -7,6 +7,7 @@ the real result.
 from __future__ import annotations
 
 import io
+import math
 import os
 import signal
 import subprocess
@@ -25,9 +26,12 @@ def _setting(name: str, default: str, parse: Callable[[str], T]) -> T:
     """Read a numeric setting, and fail naming the variable rather than with int()'s message."""
     raw = os.environ.get(name, default)
     try:
-        return parse(raw)
+        value = parse(raw)
     except ValueError:
-        raise ValueError(f"{name}={raw!r} is not a number; unset it or give it one") from None
+        value = None
+    if value is None or not math.isfinite(value) or value <= 0:
+        raise ValueError(f"{name}={raw!r} must be a positive number; unset it for the default")
+    return value
 
 
 DEFAULT_TIMEOUT = 120.0
@@ -131,16 +135,17 @@ def _kill_tree(proc: subprocess.Popen[bytes]) -> None:
     Killing only the direct child leaves its grandchildren running after the call
     returns, holding the pipes open and doing whatever they were doing.
     """
-    if sys.platform == "win32":
-        subprocess.run(
-            ["taskkill", "/F", "/T", "/PID", str(proc.pid)], capture_output=True, check=False
-        )
-    else:
-        try:
+    try:
+        if sys.platform == "win32":
+            subprocess.run(
+                ["taskkill", "/F", "/T", "/PID", str(proc.pid)], capture_output=True, check=False
+            )
+        else:
             os.killpg(proc.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-    proc.kill()  # the direct child, in case the tree kill raced with a normal exit
+    except OSError:
+        pass  # no taskkill on a minimal image, or the group is already gone
+    finally:
+        proc.kill()  # the direct child dies whatever happened to the tree kill
 
 
 def _pump(stream: IO[bytes], buf: BoundedBuffer) -> None:

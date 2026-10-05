@@ -34,7 +34,7 @@ State: the code, plus the working directory path. Questions, one request:
 | `network` | noul | Does the code open network connections: HTTP, sockets, email, cloud SDKs? |
 | `secrets` | noul | Does the code read credentials, tokens, private keys or password files, or dump environment variables? |
 | `processes` | noul | Does the code run shell commands or start other programs? |
-| `risk` | score | Levels, lowest first: "Computes and prints; touches nothing" · "Reads files or data" · "Writes only inside the working directory" · "Changes files elsewhere or sends data out" · "Destructive or irreversible: deletes data, wipes directories, alters system state" |
+| `risk` | score | `criteria`, lowest level first: "Computes and prints; touches nothing" · "Reads files or data" · "Writes only inside the working directory" · "Changes files elsewhere or sends data out" · "Destructive or irreversible: deletes data, wipes directories, alters system state" |
 
 The gate triggers on one number: `risk >= threshold`. `risk` is the probability-weighted
 float the API returns (0 is the lowest level, 4 the highest). The four nouls are reported,
@@ -125,7 +125,7 @@ Structured content gains a `judge` object: `model`, `pre` (`risk`, the four prob
 - `src/py_exec_mcp/judge.py` — `JudgeConfig.from_env()`, `Judge.pre(code, workdir)`,
   `Judge.post(stdout, stderr)`, and a `post_json(url, token, body, timeout)` transport that
   tests replace with a fake. No MCP imports; the module is plain Python.
-- `src/py_exec_mcp/server.py` — the tool takes a `Context`, calls `pre` before `_execute` and
+- `src/py_exec_mcp/server.py` — the tool takes a `Context`, calls `pre` before `execute` and
   `post` after, and uses `ctx.elicit` for `confirm`.
 
 ## Testing
