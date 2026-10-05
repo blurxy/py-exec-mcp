@@ -39,7 +39,7 @@ py-exec-mcp = "py_exec_mcp.__main__:main"
 # An extra, not a PEP 735 group: `pip install -e ".[dev]"` is what the README tells
 # contributors to run, and a group needs `--group dev` on pip >= 25.1 to resolve at all.
 [project.optional-dependencies]
-dev = ["pytest>=8", "ruff>=0.6"]
+dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.10"]
 
 [tool.hatch.version]
 path = "src/py_exec_mcp/__init__.py"
@@ -56,3 +56,8 @@ select = ["E", "F", "W", "I", "N", "B", "UP"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.mypy]
+files = ["src"]
+python_version = "3.10"
+strict = true

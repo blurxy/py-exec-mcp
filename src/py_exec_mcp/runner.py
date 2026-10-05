@@ -125,11 +125,6 @@ class RunResult:
     hint: str | None = None
 
 
-def _isolation() -> dict[str, bool]:
-    """Popen options that make the child the root of its own tree so it can be killed whole."""
-    return {} if sys.platform == "win32" else {"start_new_session": True}
-
-
 def _kill_tree(proc: subprocess.Popen[bytes]) -> None:
     """Kill the child and everything it spawned.
 
@@ -178,7 +173,9 @@ def execute(code: str, timeout_s: float = DEFAULT_TIMEOUT) -> RunResult:
             stderr=subprocess.PIPE,
             cwd=str(workdir),
             env=env,
-            **_isolation(),
+            # Own session on POSIX, so the whole tree can be killed as one group.
+            # Windows ignores the flag; taskkill /T walks the tree there instead.
+            start_new_session=sys.platform != "win32",
         )
     except OSError as exc:
         return RunResult(

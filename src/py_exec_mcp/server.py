@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import asdict
 
 import anyio
-from mcp.types import CallToolResult, TextContent, ToolAnnotations
+from mcp.types import CallToolResult, ToolAnnotations
 
 from py_exec_mcp.runner import (
     DEFAULT_TIMEOUT,
@@ -17,8 +17,8 @@ from py_exec_mcp.runner import (
 
 try:  # mcp 2.x renamed FastMCP to MCPServer. Nothing else this server touches moved.
     from mcp.server.mcpserver import MCPServer as _Server
-except ModuleNotFoundError:  # mcp 1.x
-    from mcp.server.fastmcp import FastMCP as _Server
+except ModuleNotFoundError:  # mcp 1.x; mypy runs against 2.x, where this name does not exist
+    from mcp.server.fastmcp import FastMCP as _Server  # type: ignore[attr-defined, no-redef]
 
 __all__ = ["build", "resolve_interpreter", "resolve_workdir"]
 
@@ -65,9 +65,13 @@ def build() -> _Server:
         # In a worker thread: mcp 1.x calls sync tools inline, which would freeze the
         # whole server (pings included) for as long as the script runs.
         result = await anyio.to_thread.run_sync(execute, code, timeout_s)
-        return CallToolResult(
-            content=[TextContent(type="text", text=render(result))],
-            structuredContent=asdict(result),
+        # Validated from the wire shape: the attribute is structuredContent on 1.x and
+        # structured_content on 2.x, but both accept the camelCase key.
+        return CallToolResult.model_validate(
+            {
+                "content": [{"type": "text", "text": render(result)}],
+                "structuredContent": asdict(result),
+            }
         )
 
     return mcp

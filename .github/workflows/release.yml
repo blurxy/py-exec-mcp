@@ -1,0 +1,54 @@
+name: Release
+
+# Tag a commit on main as vX.Y.Z and this builds, checks and publishes it to PyPI
+# through trusted publishing: no API token in the repo. One-time setup on PyPI:
+# add a pending publisher for owner `blurxy`, repository `py-exec-mcp`,
+# workflow `release.yml`, environment `pypi`.
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --upgrade pip build twine
+      - name: Tag must match __version__
+        run: |
+          python - <<'EOF'
+          import os, re, sys
+          tag = os.environ["GITHUB_REF_NAME"].removeprefix("v")
+          src = open("src/py_exec_mcp/__init__.py", encoding="utf-8").read()
+          version = re.search(r'__version__ = "([^"]+)"', src).group(1)
+          if tag != version:
+              sys.exit(f"tag {tag} does not match __version__ {version}")
+          print("releasing", version)
+          EOF
+      - run: python -m build
+      - run: python -m twine check dist/*
+      - name: The wheel installs and the entry point runs
+        run: |
+          python -m pip install dist/*.whl
+          python -c "import py_exec_mcp; print(py_exec_mcp.__version__)"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
