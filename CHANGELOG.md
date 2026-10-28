@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `run_python` takes an optional `cwd`: one call runs in another directory (a git worktree,
+  say) with that directory on `PYTHONPATH`. A relative `cwd` is taken from the server's
+  working directory, the interpreter does not change with it, and a `cwd` that is not a
+  directory is refused before anything runs. Until now an unknown `cwd` argument was
+  silently ignored and the code ran in the server's directory.
+
 ## [0.2.0] - 2026-10-05
 
 ### Changed

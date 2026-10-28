@@ -129,7 +129,7 @@ All optional. Everything works with none of them set.
 
 | variable | default | what it does |
 |---|---|---|
-| `PY_EXEC_CWD` | process cwd | directory code runs in, and the root added to `PYTHONPATH` |
+| `PY_EXEC_CWD` | process cwd | directory code runs in, and the root added to `PYTHONPATH`; one call can move both with the tool's `cwd` argument |
 | `PY_EXEC_PYTHON` | project venv, else `sys.executable` | interpreter to run code with |
 | `PY_EXEC_MAX_TIMEOUT` | `600` | upper clamp on `timeout_s` |
 | `PY_EXEC_MAX_OUTPUT` | `30000` | per-stream character cap before the middle of the output is cut |

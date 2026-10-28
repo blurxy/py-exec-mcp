@@ -60,6 +60,17 @@ async def test_result_carries_structured_content_alongside_the_text(session):
     assert fields["interpreter"] == sys.executable
 
 
+async def test_a_per_call_cwd_reaches_the_tool(session, tmp_path):
+    """The worktree case: the server started in one checkout, the caller works in another."""
+    other = tmp_path / "worktree"
+    other.mkdir()
+    code = "import os; print(os.getcwd())"
+    result = await session.call_tool("run_python", {"code": code, "cwd": str(other)})
+    fields = result.model_dump(by_alias=True)["structuredContent"]
+    assert fields["stdout"].strip() == str(other.resolve())
+    assert fields["workdir"] == str(other.resolve())
+
+
 async def test_annotations_say_it_is_destructive_and_open_world(session):
     """Clients that gate on hints must not be told this tool is read-only."""
     tools = (await session.list_tools()).tools

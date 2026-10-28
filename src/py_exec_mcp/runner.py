@@ -159,11 +159,34 @@ def _pump(stream: IO[bytes], buf: BoundedBuffer) -> None:
         buf.write(chunk)
 
 
-def execute(code: str, timeout_s: float = DEFAULT_TIMEOUT) -> RunResult:
-    """Run `code` with the resolved interpreter and return everything a caller needs."""
-    workdir = resolve_workdir()
-    python = resolve_interpreter(workdir)
+def _not_run(python: Path, workdir: Path, timeout: float, error: str) -> RunResult:
+    return RunResult(
+        stdout="",
+        stderr="",
+        exit_code=None,
+        timed_out=False,
+        timeout_s=timeout,
+        duration_s=0.0,
+        interpreter=str(python),
+        workdir=str(workdir),
+        error=error,
+    )
+
+
+def execute(code: str, timeout_s: float = DEFAULT_TIMEOUT, cwd: str | None = None) -> RunResult:
+    """Run `code` with the resolved interpreter and return everything a caller needs.
+
+    `cwd` moves this one run, and the root on PYTHONPATH, to another directory; a relative
+    one is taken from the server's workdir. The interpreter stays the server's: a git
+    worktree rarely has a .venv of its own, and resolving from it would fall back to a
+    bare interpreter that lacks the project's packages.
+    """
+    home = resolve_workdir()
+    python = resolve_interpreter(home)
+    workdir = (home / cwd).resolve() if cwd else home
     timeout = max(MIN_TIMEOUT, min(MAX_TIMEOUT, float(timeout_s)))
+    if not workdir.is_dir():
+        return _not_run(python, workdir, timeout, f"cwd {workdir} is not a directory")
 
     env = dict(os.environ)
     env["PYTHONPATH"] = str(workdir) + os.pathsep + env.get("PYTHONPATH", "")
@@ -183,17 +206,7 @@ def execute(code: str, timeout_s: float = DEFAULT_TIMEOUT) -> RunResult:
             start_new_session=sys.platform != "win32",
         )
     except OSError as exc:
-        return RunResult(
-            stdout="",
-            stderr="",
-            exit_code=None,
-            timed_out=False,
-            timeout_s=timeout,
-            duration_s=0.0,
-            interpreter=str(python),
-            workdir=str(workdir),
-            error=f"could not start interpreter {python}: {exc}",
-        )
+        return _not_run(python, workdir, timeout, f"could not start interpreter {python}: {exc}")
 
     assert proc.stdin is not None and proc.stdout is not None and proc.stderr is not None
     out_buf, err_buf = BoundedBuffer(MAX_OUTPUT), BoundedBuffer(MAX_OUTPUT)

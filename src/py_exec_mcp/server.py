@@ -47,6 +47,9 @@ triple-quoted blocks all arrive verbatim.
 - stdin is taken by the code itself, so the program cannot call input(); put data in the code.
 - Runs in the working directory (PY_EXEC_CWD, else the server's cwd) with the project's own
   .venv if there is one, and that directory is on PYTHONPATH so local packages import.
+- cwd (optional) runs this one call in another directory, such as a git worktree, with that
+  directory on PYTHONPATH instead. A relative cwd is taken from the working directory above.
+  The interpreter does not change with it.
 - timeout_s (default 120) is clamped to [1, PY_EXEC_MAX_TIMEOUT]. On timeout the whole
   process tree is killed and whatever was printed so far is still returned.
 - Long output is cut in the middle, keeping the start and the end, and the cut is announced
@@ -61,10 +64,12 @@ def build() -> _Server:
     mcp = _Server("py-exec")
 
     @mcp.tool(description=DESCRIPTION, annotations=ANNOTATIONS)
-    async def run_python(code: str, timeout_s: float = DEFAULT_TIMEOUT) -> CallToolResult:
+    async def run_python(
+        code: str, timeout_s: float = DEFAULT_TIMEOUT, cwd: str | None = None
+    ) -> CallToolResult:
         # In a worker thread: mcp 1.x calls sync tools inline, which would freeze the
         # whole server (pings included) for as long as the script runs.
-        result = await anyio.to_thread.run_sync(execute, code, timeout_s)
+        result = await anyio.to_thread.run_sync(execute, code, timeout_s, cwd)
         # Validated from the wire shape: the attribute is structuredContent on 1.x and
         # structured_content on 2.x, but both accept the camelCase key.
         return CallToolResult.model_validate(
