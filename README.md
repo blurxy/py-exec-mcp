@@ -1,6 +1,8 @@
 # py-exec-mcp
 
-**Run Python from an MCP client without a shell mangling your code.**
+**Run Python from an MCP client without a shell mangling your code, inside your project's own
+`.venv` with your package importable.** Most Python MCP servers isolate code away from your
+project (containers, Pyodide, gVisor); this one deliberately runs in it.
 
 [![CI](https://github.com/blurxy/py-exec-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/blurxy/py-exec-mcp/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/py-exec-mcp)](https://pypi.org/project/py-exec-mcp/)
