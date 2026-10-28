@@ -201,6 +201,68 @@ def test_code_runs_in_the_workdir_and_can_import_from_it(run, tmp_path):
     assert "imported-from-workdir" in out
 
 
+# ── a per-call cwd: one server, many checkouts (a git worktree is another directory) ──
+
+
+def test_a_per_call_cwd_runs_there_and_imports_from_it(run, tmp_path):
+    other = tmp_path / "worktree"
+    other.mkdir()
+    (other / "local_module.py").write_text("VALUE = 'imported-from-the-call-cwd'\n")
+    code = "import os, local_module; print(os.getcwd()); print(local_module.VALUE)"
+    out = run(code, cwd=str(other))
+    assert str(other.resolve()) in out
+    assert "imported-from-the-call-cwd" in out
+
+
+def test_a_per_call_cwd_is_the_root_on_pythonpath(run, tmp_path):
+    """`python -` already has its cwd on sys.path; PYTHONPATH is what a child process or
+    an os.chdir() keeps, so it must name the call's directory, not the server's."""
+    other = tmp_path / "worktree"
+    other.mkdir()
+    result = runner.execute(
+        "import os; print(os.environ['PYTHONPATH'].split(os.pathsep)[0])", cwd=str(other)
+    )
+    assert result.stdout.strip() == str(other.resolve())
+
+
+def test_a_relative_cwd_is_resolved_against_the_server_workdir(run, tmp_path):
+    (tmp_path / "sub").mkdir()
+    result = runner.execute("import os; print(os.getcwd())", cwd="sub")
+    assert result.stdout.strip() == str((tmp_path / "sub").resolve())
+    assert result.workdir == str((tmp_path / "sub").resolve())
+
+
+def test_a_cwd_that_is_not_a_directory_is_refused_not_run(run, tmp_path):
+    out = run("print('should not run')", cwd=str(tmp_path / "nope"))
+    assert "should not run" not in out
+    assert "not a directory" in out
+    assert "nope" in out
+
+
+def test_a_cwd_without_a_venv_keeps_the_servers_venv(monkeypatch, tmp_path):
+    """Resolving from the call's directory would drop a worktree with no .venv of its
+    own to the server's bare interpreter, where the project's packages are missing."""
+    monkeypatch.setenv("PY_EXEC_CWD", str(tmp_path))
+    monkeypatch.delenv("PY_EXEC_PYTHON", raising=False)
+    server_venv = tmp_path / ".venv" / "Scripts" / "python.exe"
+    server_venv.parent.mkdir(parents=True)
+    server_venv.write_text("")
+    (tmp_path / "worktree").mkdir()
+    result = runner.execute("print(1)", cwd=str(tmp_path / "worktree"))
+    assert result.interpreter == str(server_venv)
+
+
+def test_a_venv_in_the_call_cwd_does_not_replace_the_servers_interpreter(monkeypatch, tmp_path):
+    monkeypatch.setenv("PY_EXEC_CWD", str(tmp_path))
+    monkeypatch.delenv("PY_EXEC_PYTHON", raising=False)
+    planted = tmp_path / "worktree" / ".venv" / "Scripts" / "python.exe"
+    planted.parent.mkdir(parents=True)
+    planted.write_text("")
+    result = runner.execute("print('ran')", cwd=str(tmp_path / "worktree"))
+    assert result.interpreter == sys.executable
+    assert result.stdout.strip() == "ran"
+
+
 # ── the result explains the failures an agent hits most ───────────────────────
 
 

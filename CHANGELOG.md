@@ -6,6 +6,21 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `run_python` takes an optional `cwd`: one call runs in another directory (a git worktree,
+  say) with that directory on `PYTHONPATH`. A relative `cwd` is taken from the server's
+  working directory, the interpreter does not change with it, and a `cwd` that is not a
+  directory is refused before anything runs. Until now an unknown `cwd` argument was
+  silently ignored and the code ran in the server's directory.
+
+### Changed
+
+- **Dependency floor is now `mcp>=1.21.1`** (was 1.19). mcp 1.19.0 to 1.21.0 import
+  `eval_type_backport` from `pydantic._internal`, which pydantic 2.14 removed, so on a fresh
+  install they fail at import. Measured with pydantic 2.14.1: 1.19.0, 1.20.0 and 1.21.0 fail;
+  1.21.1, 1.21.2 and 1.22.0 pass the suite.
+
 ## [0.2.0] - 2026-10-05
 
 ### Changed

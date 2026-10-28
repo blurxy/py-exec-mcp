@@ -1,6 +1,8 @@
 # py-exec-mcp
 
-**Run Python from an MCP client without a shell mangling your code.**
+**Run Python from an MCP client without a shell mangling your code, inside your project's own
+`.venv` with your package importable.** Most Python MCP servers isolate code away from your
+project (containers, Pyodide, gVisor); this one deliberately runs in it.
 
 [![CI](https://github.com/blurxy/py-exec-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/blurxy/py-exec-mcp/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/py-exec-mcp)](https://pypi.org/project/py-exec-mcp/)
@@ -42,7 +44,7 @@ uvx --from git+https://github.com/blurxy/py-exec-mcp py-exec-mcp   # straight fr
 
 Works on **both MCP SDK majors** — 2.x renamed `FastMCP` to `MCPServer`, and the server binds
 whichever one your environment has, so you are not forced to pin the SDK to match it. Needs
-`mcp>=1.19`.
+`mcp>=1.21.1`.
 
 ## Configure
 
@@ -129,7 +131,7 @@ All optional. Everything works with none of them set.
 
 | variable | default | what it does |
 |---|---|---|
-| `PY_EXEC_CWD` | process cwd | directory code runs in, and the root added to `PYTHONPATH` |
+| `PY_EXEC_CWD` | process cwd | directory code runs in, and the root added to `PYTHONPATH`; one call can move both with the tool's `cwd` argument |
 | `PY_EXEC_PYTHON` | project venv, else `sys.executable` | interpreter to run code with |
 | `PY_EXEC_MAX_TIMEOUT` | `600` | upper clamp on `timeout_s` |
 | `PY_EXEC_MAX_OUTPUT` | `30000` | per-stream character cap before the middle of the output is cut |
