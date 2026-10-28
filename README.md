@@ -44,7 +44,7 @@ uvx --from git+https://github.com/blurxy/py-exec-mcp py-exec-mcp   # straight fr
 
 Works on **both MCP SDK majors** — 2.x renamed `FastMCP` to `MCPServer`, and the server binds
 whichever one your environment has, so you are not forced to pin the SDK to match it. Needs
-`mcp>=1.19`.
+`mcp>=1.21.1`.
 
 ## Configure
 
